@@ -26,6 +26,9 @@
 # Package Imports
 # ==============================================================================
 
+using Pkg
+Pkg.add(["HDF5", "ITensors", "ITensorMPS", "Statistics", "Printf", "Distributed", "Dates", "Logging", "LinearAlgebra"])
+
 using HDF5
 using ITensors
 using Dates
