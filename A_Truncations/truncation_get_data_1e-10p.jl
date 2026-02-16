@@ -58,7 +58,6 @@ function get_data(N, σ, J, Δ, μ, num_sweeps, cutoff_val)
     maxdims = [10, 20, 50, 100, 200, 400, 800, 1600, 3200, 5000] 
     noises = [1E-6, 1E-7, 1E-8, 0.0]
 
-    # Perform DMRG with keyword arguments
     energy, ψ_gs = dmrg(H, ψ₀; 
                         nsweeps=num_sweeps, 
                         maxdim=maxdims, 
@@ -78,7 +77,6 @@ function get_data(N, σ, J, Δ, μ, num_sweeps, cutoff_val)
     return coeffs, energy, magnetization
 end
 
-# --- MAIN EXECUTION ---
 
 N_values = collect(10:2:90)
 J_val = -1.0        
