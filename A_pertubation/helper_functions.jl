@@ -27,8 +27,17 @@
 # ==============================================================================
 
 using Pkg
-Pkg.add(["HDF5", "ITensors", "ITensorMPS", "Statistics", "Printf", "Distributed", "Dates", "Logging", "LinearAlgebra"])
-
+# NOTE: Do NOT call `Pkg.add` inside files that are `include`d. Installing packages
+# during `include` can trigger environment changes and precompilation/version
+# resolution while the file is being parsed, causing confusing errors.
+#
+# Install required packages from the REPL or ensure the project's environment
+# (Project.toml/Manifest.toml) lists them. From the Julia REPL run:
+#
+#    ] activate .
+#    ] add HDF5 ITensors ITensorMPS Statistics Printf Distributed Dates Logging
+#    ] instantiate
+#
 using HDF5
 using ITensors
 using Dates
@@ -144,6 +153,31 @@ function find_ground_state_mps(run_params::Dict{String,Any}, system_params::Dict
     H = create_xxz_hamiltonian_mpo(N, A, J, Δ, sites)
     _, ψ_gs = solve_xxz_hamiltonian_dmrg(H, ψ, NUM_SWEEPS, MAX_BOND_DIM, ACC)
     return ψ_gs
+end
+
+
+
+"""
+get_squared_sorted_schmidt_spectrum_from_mps(psi::MPS) -> Vector{Float64}  
+Calculate the squared and sorted Schmidt spectrum from an MPS at the center bond.
+This function orthogonalizes the MPS at the center bond, performs an SVD to extract the singular values, squares them to get the Schmidt coefficients, and returns them sorted in descending order.
+"""
+
+function get_squared_sorted_schmidt_spectrum_from_mps(psi::MPS)
+    N = length(psi)
+    b = N ÷ 2 
+    
+    # Ensure the MPS is in orthogonal form at the center bond
+    psi_cp = copy(psi)
+    orthogonalize!(psi_cp, b)
+    
+    # Perform SVD at bond b to get singular values S
+    # Split the tensor at site b into (Link b-1, Site b) and (Link b)
+    U, S, V = svd(psi_cp[b], (linkind(psi_cp, b-1), siteind(psi_cp, b)))
+    
+    # Extract singular values from the diagonal of S, square them, and sort
+    svs = [S[i, i] for i in 1:dim(S, 1)]
+    return sort(svs .^ 2, rev=true)
 end
 
 
