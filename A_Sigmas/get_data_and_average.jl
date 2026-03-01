@@ -4,12 +4,8 @@ using JLD2
 using Base.Threads
 using Printf
 
-# Read the cutoff power from the command line argument passed by SLURM
-if length(ARGS) < 1
-    error("Please provide the cutoff power as a command-line argument (e.g., 16 for 1e-16).")
-end
-power = parse(Int, ARGS[1])
-current_cutoff = 10.0^(-power)
+# Hard-coded truncation cutoff as requested
+current_cutoff = 1e-16
 
 Random.seed!(1234);
 const io_lock = ReentrantLock()
@@ -52,7 +48,7 @@ function create_weighted_xxz_mpo(N::Int, adj_mat, sites; J::Float64, Δ::Float64
         end
     end
     H = MPO(ampo, sites)
-    return truncate!(H; cutoff=1e-15) 
+    return truncate!(H; cutoff=1e-15)
 end
 
 function get_entropies_and_spectrum(ψ::MPS, N::Int, max_dim::Int)
@@ -143,7 +139,7 @@ function run_simulation_avg_err(
             try
                 jldsave(filename; 
                     avg_matrix, err_matrix, vn_avg, vn_err, 
-                    s05_avg, s05_err, s0_avg, s0_err, 
+                    s05_avg, s05_err, s0_avg, s0_err,
                     spectra_avg, N_range, sigma_values)
                 println("Checkpoint saved for N=$N, EPS=$cutoff")
                 flush(stdout)
@@ -162,8 +158,8 @@ num_sweeps = 30
 max_bond_dim_limit = 1000
 μ = 1.0
 
-cutoff_str = @sprintf("%.0e", current_cutoff)
-filename = joinpath(@__DIR__, "data_more_$(cutoff_str).jld2")
+# Simplified filename for the single cutoff
+filename = joinpath(@__DIR__, "data_more_1e-16.jld2")
 
 avg_matrix = zeros(Float64, length(N_range), length(sigma_values))
 err_matrix = zeros(Float64, length(N_range), length(sigma_values))
