@@ -158,7 +158,6 @@ end
 
 N_range = collect(2:2:80)
 
-# Flatten the sigma values into a single standard Vector{Float64}
 sigma_values = collect(Float64, vcat(0.0, 0.0000001, 0.0000002:0.0000002:0.00001, 0.001, 0.002:0.002:0.1))
 
 num_graphs_avg = 10
