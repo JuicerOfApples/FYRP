@@ -6,7 +6,7 @@ using Printf
 
 LinearAlgebra.BLAS.set_num_threads(1)
 
-current_cutoff = 1e-16
+current_cutoff = 1e-14
 
 Random.seed!(1234);
 const io_lock = ReentrantLock()
@@ -27,7 +27,6 @@ function create_weighted_adj_mat(N::Int, σ::Float64; μ::Float64=1.0)
     A = zeros(Float64, N, N)
     for i in 1:N, j in (i+1):N
         r = randn()
-     
         while abs(r) > 2.0
             r = randn()
         end
@@ -174,12 +173,12 @@ function run_simulation_avg_err_single_sigma(
     end
 end
 
-N_range = collect(5:5:300)
-sigma_values = collect(Float64, vcat(0.0, 1e-7, 1e-6, 1e-5, 1e-4))
+N_range = collect(5:5:200)
+sigma_values = collect(Float64, vcat(5e-7, 6e-7, 7e-7, 8e-7, 9e-7, 1e-6, 2e-6, 3e-6, 4e-6, 5e-6))
 
 num_graphs_avg = 10
 num_sweeps = 30
-max_bond_dim_limit = 200
+max_bond_dim_limit = 500
 μ = 1.0
 
 cutoff_str = @sprintf("%.0e", current_cutoff)
@@ -194,71 +193,92 @@ if length(ARGS) > 0
     end
 end
 
+
+max_concurrent_sigmas = 10
+
+sigma_queue = Channel{Float64}(length(sigmas_to_run))
 for σ in sigmas_to_run
-    sigma_str = @sprintf("%.1e", σ)
-    filename = joinpath(@__DIR__, "data_$(sigma_str).jld2")
+    put!(sigma_queue, σ)
+end
+close(sigma_queue)
 
-    avg_arr = zeros(Float64, length(N_range))
-    err_arr = zeros(Float64, length(N_range))
-    vn_avg = zeros(Float64, length(N_range))
-    vn_err = zeros(Float64, length(N_range))
-    s05_avg = zeros(Float64, length(N_range))
-    s05_err = zeros(Float64, length(N_range))
-    s0_avg = zeros(Float64, length(N_range))
-    s0_err = zeros(Float64, length(N_range))
-    energy_avg = zeros(Float64, length(N_range)) 
-    energy_err = zeros(Float64, length(N_range)) 
-    spectra_avg = zeros(Float64, length(N_range), max_bond_dim_limit)
-    
-    # Initialise MPS and MPO arrays with `missing` to prevent save crashes
-    mps_arr = Vector{Union{Vector{MPS}, Missing}}(missing, length(N_range)) 
-    mpo_arr = Vector{Union{Vector{MPO}, Missing}}(missing, length(N_range))
+println("Queue populated. Starting $max_concurrent_sigmas concurrent workers...")
+flush(stdout)
 
-    if isfile(filename)
-        println("\nResuming from existing file: $filename")
-        flush(stdout)
-        data = load(filename)
-        if haskey(data, "vn_avg") && data["N_range"] == N_range && data["sigma"] == σ
-            avg_arr = data["avg_arr"]
-            err_arr = data["err_arr"]
-            vn_avg = data["vn_avg"]
-            vn_err = data["vn_err"]
-            s05_avg = data["s05_avg"]
-            s05_err = data["s05_err"]
-            s0_avg = data["s0_avg"]
-            s0_err = data["s0_err"]
-            spectra_avg = data["spectra_avg"]
+# Spawn a fixed number of workers to process the queue
+@sync for worker_id in 1:max_concurrent_sigmas
+    Threads.@spawn begin
+        # As long as there are σ values in the queue, this worker will keep pulling them
+        for σ in sigma_queue 
+            sigma_str = @sprintf("%.1e", σ)
+            filename = joinpath(@__DIR__, "data_fid_$(current_cutoff)_$(sigma_str).jld2")
+
+            # Initialise local variables for this specific σ run
+            avg_arr = zeros(Float64, length(N_range))
+            err_arr = zeros(Float64, length(N_range))
+            vn_avg = zeros(Float64, length(N_range))
+            vn_err = zeros(Float64, length(N_range))
+            s05_avg = zeros(Float64, length(N_range))
+            s05_err = zeros(Float64, length(N_range))
+            s0_avg = zeros(Float64, length(N_range))
+            s0_err = zeros(Float64, length(N_range))
+            energy_avg = zeros(Float64, length(N_range)) 
+            energy_err = zeros(Float64, length(N_range)) 
+            spectra_avg = zeros(Float64, length(N_range), max_bond_dim_limit)
             
-            # Load energies if they exist
-            if haskey(data, "energy_avg")
-                energy_avg = data["energy_avg"]
-                energy_err = data["energy_err"]
+            mps_arr = Vector{Union{Vector{MPS}, Missing}}(missing, length(N_range)) 
+            mpo_arr = Vector{Union{Vector{MPO}, Missing}}(missing, length(N_range))
+
+            if isfile(filename)
+                println("\n[Worker $worker_id] Resuming existing file: $filename")
+                flush(stdout)
+                data = load(filename)
+                if haskey(data, "vn_avg") && data["N_range"] == N_range && data["sigma"] == σ
+                    avg_arr = data["avg_arr"]
+                    err_arr = data["err_arr"]
+                    vn_avg = data["vn_avg"]
+                    vn_err = data["vn_err"]
+                    s05_avg = data["s05_avg"]
+                    s05_err = data["s05_err"]
+                    s0_avg = data["s0_avg"]
+                    s0_err = data["s0_err"]
+                    spectra_avg = data["spectra_avg"]
+                    
+                    if haskey(data, "energy_avg")
+                        energy_avg = data["energy_avg"]
+                        energy_err = data["energy_err"]
+                    end
+                    
+                    if haskey(data, "mps_arr") 
+                        mps_arr = data["mps_arr"]
+                    end
+                    if haskey(data, "mpo_arr")
+                        mpo_arr = data["mpo_arr"]
+                    end
+                else
+                    println("[Worker $worker_id] Parameter mismatch. Starting fresh for $filename.")
+                    flush(stdout)
+                end
+            else
+                println("\n[Worker $worker_id] Creating new file: $filename")
+                flush(stdout)
             end
-            
-            # Load previous states and MPOs if they exist
-            if haskey(data, "mps_arr") 
-                mps_arr = data["mps_arr"]
-            end
-            if haskey(data, "mpo_arr")
-                mpo_arr = data["mpo_arr"]
-            end
-        else
-            println("Parameter mismatch detected. Starting fresh for $filename.")
+
+            # Run the simulation
+            run_simulation_avg_err_single_sigma(
+                avg_arr, err_arr, vn_avg, vn_err,
+                s05_avg, s05_err, s0_avg, s0_err,
+                energy_avg, energy_err,
+                spectra_avg, mps_arr, mpo_arr, 
+                N_range, σ,
+                num_graphs_avg, num_sweeps, max_bond_dim_limit, current_cutoff, μ, filename
+            )
+
+            println("[Worker $worker_id] Simulation for σ=$(σ), EPS=$(current_cutoff) complete. Data saved to $filename")
             flush(stdout)
+            
+            # garbage collection run after a massive simulation block finishes
+            GC.gc() 
         end
-    else
-        println("\nCreating new file: $filename")
     end
-
-    run_simulation_avg_err_single_sigma(
-        avg_arr, err_arr, vn_avg, vn_err,
-        s05_avg, s05_err, s0_avg, s0_err,
-        energy_avg, energy_err,
-        spectra_avg, mps_arr, mpo_arr, 
-        N_range, σ,
-        num_graphs_avg, num_sweeps, max_bond_dim_limit, current_cutoff, μ, filename
-    )
-
-    println("Simulation for σ=$(σ), EPS=$(current_cutoff) complete. Data saved to $filename")
-    flush(stdout)
 end
