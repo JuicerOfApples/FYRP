@@ -18,8 +18,8 @@ current_cutoff = parse(Float64, ARGS[1])
 task_id = parse(Int, ARGS[2])
 
 # Parameters
-N_range = collect(5:5:200)
-sigma_values = Float64[5e-7, 6e-7, 7e-7, 8e-7, 9e-7, 1e-6, 2e-6, 3e-6, 4e-6, 5e-6, 1e-5, 1e-4, 1e-3, 1e-2, 2e-2, 1e-1, 2e-1, 5e-1, 7e-1, 1.0, 1.5, 2.0, 3.0, 5.0]
+N_range = collect(2:2:100)
+sigma_values = Float64[5e-7, 6e-7, 7e-7, 8e-7, 9e-7, 1e-6, 1.2e-6, 1.4e-6, 1.6e-6, 1.8e-6, 2e-6, 2.2e-6, 2.4e-6, 2.6e-6, 2.8e-6, 3e-6, 4e-6, 5e-6, 1e-5, 1e-4, 1e-3, 1e-2, 2e-2, 1e-1, 2e-1, 5e-1, 7e-1, 1.0, 1.5, 2.0, 3.0, 5.0]
 
 if 1 <= task_id <= length(sigma_values)
     σ = sigma_values[task_id]
@@ -81,14 +81,17 @@ function get_entropies_and_spectrum(ψ::MPS, N::Int, max_dim::Int)
     center_bond = N ÷ 2
     orthogonalize!(ψ, center_bond)
     
-    l_ind = linkind(ψ, center_bond - 1)
+    r_ind = linkind(ψ, center_bond)
     s_ind = siteind(ψ, center_bond)
-    inds_to_svd = isnothing(l_ind) ? (s_ind,) : (l_ind, s_ind)
+    inds_to_svd = isnothing(r_ind) ? (s_ind,) : (s_ind, r_ind)
     
     _, S, _ = svd(ψ[center_bond], inds_to_svd...)
     
-    sv = [S[i, i] for i in 1:dim(S, 1)]
-    p = sv .^ 2
+    schmidt_dim = dim(S, 1)
+    sv = [S[i, i] for i in 1:schmidt_dim]
+    
+    p = sort(sv .^ 2, rev=true)
+    
     p ./= sum(p)
     
     vn = -sum(x -> x > 1e-18 ? x * log(x) : 0.0, p)
@@ -177,6 +180,7 @@ for i in 1:length(N_range)
         # Record standard metrics
         energies[k] = energy_noisy
         bond_dims[k] = maxlinkdim(ψ_noisy)
+    
         vn, s05, s0, spec = get_entropies_and_spectrum(ψ_noisy, N, max_bond_dim_limit)
         vns[k] = vn
         s05s[k] = s05

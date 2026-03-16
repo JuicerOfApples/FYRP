@@ -18,7 +18,7 @@ current_cutoff = parse(Float64, ARGS[1])
 σ = 0.0 # Clean case strictly forced
 
 # Parameters
-N_range = collect(5:5:200)
+N_range = collect(2:2:100)
 num_sweeps = 30
 max_bond_dim_limit = 2000
 μ = 1.0
@@ -65,14 +65,21 @@ function get_entropies_and_spectrum(ψ::MPS, N::Int, max_dim::Int)
     center_bond = N ÷ 2
     orthogonalize!(ψ, center_bond)
     
-    l_ind = linkind(ψ, center_bond - 1)
+    # NEW SVD LOGIC: site index + right link index
+    r_ind = linkind(ψ, center_bond)
     s_ind = siteind(ψ, center_bond)
-    inds_to_svd = isnothing(l_ind) ? (s_ind,) : (l_ind, s_ind)
+    inds_to_svd = isnothing(r_ind) ? (s_ind,) : (s_ind, r_ind)
     
     _, S, _ = svd(ψ[center_bond], inds_to_svd...)
     
-    sv = [S[i, i] for i in 1:dim(S, 1)]
-    p = sv .^ 2
+    # Extract diagonal elements
+    schmidt_dim = dim(S, 1)
+    sv = [S[i, i] for i in 1:schmidt_dim]
+    
+    # Sort descending and square (probabilities)
+    p = sort(sv .^ 2, rev=true)
+    
+    # Normalize probabilities safely
     p ./= sum(p) 
     
     vn = -sum(x -> x > 1e-18 ? x * log(x) : 0.0, p)
