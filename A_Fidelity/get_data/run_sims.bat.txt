@@ -1,0 +1,6 @@
+@echo off
+for %%c in (1e-6 1e-8 1e-10 1e-12) do (
+    echo Running simulation for cutoff: %%c
+    julia get_data_clean_fids.jl %%c
+)
+pause
